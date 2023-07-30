@@ -3,8 +3,11 @@ import  express  from "express";
 import bodyParser from "body-parser";
 import ejs from "ejs";
 import mongoose from "mongoose";
-// import encrypt from "mongoose-encryption";   //REMOVED FOR LEVEL 3: HASHING
-import md5 from 'md5';
+// import encrypt from "mongoose-encryption";   // LEVEL 2
+// import md5 from 'md5'; // LEVEL 3
+import bcrypt from "bcrypt"; // LEVEL 4
+
+const saltRounds = 10;
 
 
 const app = express();
@@ -36,24 +39,33 @@ app.get("/register", (req, res)=> {
 })
 
 app.post("/register", async(req, res)=>{
-   const newUser = new User({
-    email : req.body.username,
-    password : md5(req.body.password) // converts user password into hash
-   })
-
-   await newUser.save().then(res.render("secrets.ejs"));
+    
+      bcrypt.hash(req.body.password, saltRounds, function(err, hash) {
+        const newUser = new User({
+            email : req.body.username,
+            password : hash
+            // password : md5(req.body.password) // level3 : converts user password into hash
+           }) 
+           console.log(newUser.password)
+           newUser.save().then(res.render("secrets.ejs"));
+        }); 
+   
+    // await newUser.save().then(res.render("secrets.ejs"));
 })
 
 app.post("/login", async(req, res)=>{
     try{
         const foundUser = await User.findOne({email : req.body.username});
-        if(foundUser.password === md5(req.body.password)){
-          res.render("secrets.ejs");
-        }
-        else{
-          console.log("credentials dont match")
-        }
+        const typedPassword = req.body.password;
 
+        await bcrypt.compare(typedPassword, foundUser.password).then(function(result) {
+           if(result === true){
+               res.render("secrets.ejs");
+           }else{
+            console.log("credentials dont match")
+          }
+        });
+        
     }catch(error){
         console.log(error.message);
     }
