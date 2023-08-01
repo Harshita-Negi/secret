@@ -1,14 +1,17 @@
-import 'dotenv/config' // ENVIRONMENT VARIABLE FOR STORING PRIVATE VALUES.
-import  express  from "express";
-import bodyParser from "body-parser";
-import ejs from "ejs";
-import mongoose from "mongoose";
+
+require('dotenv').config(); // ENVIRONMENT VARIABLE FOR STORING PRIVATE VALUES.
+const express = require("express");
+const bodyParser = require("body-parser");
+const ejs = require("ejs");
+const mongoose = require("mongoose");
 // import encrypt from "mongoose-encryption";   // LEVEL 2
 // import md5 from 'md5'; // LEVEL 3
 // import bcrypt from "bcrypt"; // LEVEL 4
-import session from 'express-session';  // LEVEL 5
-import passport from 'passport';   // LEVEL 5
-import passportLocalMongoose from "passport-local-mongoose";  // LEVEL 5
+const session = require('express-session');  // LEVEL 5
+const passport = require("passport");    // LEVEL 5
+const passportLocalMongoose = require("passport-local-mongoose");  // LEVEL 5
+const googleStrategy = require('passport-google-oauth20').Strategy;  // LEVEL 6
+const findOrCreate = require('mongoose-findorcreate');
 
 const saltRounds = 10;
 
@@ -30,21 +33,62 @@ mongoose.connect("mongodb://127.0.0.1:27017/userDB");
 
 const userSchema = new mongoose.Schema({
     email : String,
-    password : String
+    password : String,
+    googleId : String
 });
 
 userSchema.plugin(passportLocalMongoose);
+userSchema.plugin(findOrCreate);
 // userSchema.plugin(encrypt, {secret: process.env.SECRET, encryptedFields:["password"]}); // process.env.SECRET: uses the value SECRET in .env file.
 
 const User = new mongoose.model("User", userSchema);
 
 passport.use(User.createStrategy());  // TO SETUP PASSPORT LOCAL MONGOOSE
-passport.serializeUser(User.serializeUser());
-passport.deserializeUser(User.deserializeUser());
+
+passport.serializeUser(function(user, cb) {
+    process.nextTick(function() {
+      return cb(null, {
+        id: user.id,
+        username: user.username,
+        picture: user.picture
+      });
+    });
+  });
+  
+passport.deserializeUser(function(user, cb) {
+    process.nextTick(function() {
+      return cb(null, user);
+    });
+});
+
+passport.use(new googleStrategy({
+    clientID: process.env.CLIENT_ID,
+    clientSecret: process.env.CLIENT_SECRET,
+    callbackURL: "http://localhost:3000/auth/google/secrets",
+    userProfileURL: "https://www.googleapis.com/oauth2/v3/userinfo"
+  },
+  function(accessToken, refreshToken, profile, cb) {
+    // console.log(profile);    
+    User.findOrCreate({ googleId: profile.id }, function (err, user) {
+      return cb(err, user);
+    });
+  }
+));
 
 app.get("/", (req, res)=> {
    res.render("home.ejs");
 })
+
+app.get("/auth/google", 
+    passport.authenticate("google", { scope :["profile"]})
+);
+
+app.get('/auth/google/secrets', 
+  passport.authenticate('google', { failureRedirect: '/login' }),
+  function(req, res) {
+    // Successful authentication, redirect home.
+    res.redirect('/secrets');
+});
 
 app.get("/login", (req, res)=> {
     res.render("login.ejs");
